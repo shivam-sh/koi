@@ -1,6 +1,8 @@
 use dotenv_codegen::dotenv;
-use reqwest;
+use eventsource_client as es;
+use futures::{TryStreamExt};
 use serde::{Serialize, Deserialize};
+use std::io::{self, Write};
 
 #[derive(Serialize, Deserialize)]
 #[derive(Clone)]
@@ -37,9 +39,8 @@ DON'T SAY YOU CAN'T ANSWER try your best
 you only have access to the local shell DON'T TRY TO USE OTHER LANGUAGES";
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<(), es::Error> {
     const API_KEY: &str = dotenv!("API_KEY");
-    let client = reqwest::Client::new();
 
     let mut messages: Vec<Message> = [
         Message {
@@ -76,59 +77,82 @@ async fn main() {
             }
         } 
 
-        let body: Body = Body {
+        let body = Body {
             model: "gpt-3.5-turbo".to_string(),
             messages: messages.clone(),
             max_tokens: None,
             temperature: None,
             top_p: None,
-            stream: Some(false),
+            stream: Some(true),
         };
 
-        let res = client.post("https://api.openai.com/v1/chat/completions")
-        .header("Content-Type", "application/json")
-        .header("Authorization", "Bearer ".to_string() + &API_KEY)
-        .body(serde_json::to_string(&body).unwrap())
-        .send()
-        .await;
+        let client = es::ClientBuilder::for_url("https://api.openai.com/v1/chat/completions")?
+            .method("POST".to_string())
+            .header("Content-Type", "application/json")?
+            .header("Authorization", &("Bearer ".to_string() + &API_KEY))?
+            .body(serde_json::to_string(&body).unwrap())
+            .build();
 
-        match res {
-            Ok(res) => {
-                let body = res.text().await.unwrap();
-                let body: serde_json::Value = serde_json::from_str(&body).unwrap();
-                let response = body["choices"][0]["message"]["content"].as_str();
+        let response = stream_response(client).await;
+        let content = response.content.clone();
+        messages.push(response);
 
-                match response {
-                    Some(response) => {
-                        println!("{}\n", response);
-                        messages.push(Message {
-                            role: "assistant".to_string(),
-                            content: response.to_string(),
-                        });
 
-                        if response.contains(">>") {
-                            for line in response.lines() {
-                                if line.contains(">>") {
-                                    let command = line.split(">>").collect::<Vec<&str>>()[1].to_string();
-                                    let output = run(command);
-                                    println!("{}", output);
-                                    messages.push(Message {
-                                        role: "system".to_string(),
-                                        content: output.to_string(),
-                                    });
-                                }
-                            }
-                        }
-                    },
-                    None => {
-                        println!("Error: Invalid response");
-                    }
+        if content.contains(">>") {
+            for line in content.lines() {
+                if line.contains(">>") {
+                    let command = line.split(">>").collect::<Vec<&str>>()[1].to_string();
+                    let output = run(command);
+                    println!("{}\n", output);
+
+                    messages.push(Message {
+                        role: "system".to_string(),
+                        content: output.to_string(),
+                    });
                 }
-            },
-            Err(err) => {
-                println!("Error: {}", err);
             }
         }
+    }
+
+    Ok(())
+}
+
+async fn stream_response(client: impl es::Client) -> Message {
+    let mut response = "".to_string();
+
+    let mut stream = client
+        .stream()
+        .map_ok(|event| match event {
+            es::SSE::Event(ev) => {
+                if ev.event_type == "message" {
+                    let body: serde_json::Value = serde_json::from_str(&ev.data).unwrap_or_default();
+                    let message = body["choices"][0]["delta"]["content"].as_str();
+
+                    match message {
+                        Some(message) => {
+                            print!("{}", message);
+                            io::stdout().flush().unwrap();
+                            response.push_str(message);
+                        },
+                        None => {}
+                    }
+                }
+            }
+            es::SSE::Comment(_) => {}
+        });
+
+    let mut end = false;
+    while !end {
+        if let Err(_) = stream.try_next().await {
+            end = true;
+        }
+    }
+
+    print!("\n\n");
+
+    Message {
+        role: "assistant".to_string(),
+        content: response,
     }
 }
 
