@@ -1,6 +1,6 @@
 use dotenv_codegen::dotenv;
 use eventsource_client as es;
-use futures::{TryStreamExt};
+use futures::TryStreamExt;
 use serde::{Serialize, Deserialize};
 use std::io::{self, Write};
 
@@ -73,9 +73,8 @@ async fn main() -> Result<(), es::Error> {
             Err(err) => {
                 if err.to_string() == "Operation was interrupted by the user" {
                     break;
-                } else {
-                    println!("Error: {}", err);
                 }
+                eprintln!("Error: {err}");
                 continue;
             }
         } 
@@ -92,8 +91,8 @@ async fn main() -> Result<(), es::Error> {
         let client = es::ClientBuilder::for_url("https://api.openai.com/v1/chat/completions")?
             .method("POST".to_string())
             .header("Content-Type", "application/json")?
-            .header("Authorization", &("Bearer ".to_string() + &API_KEY))?
-            .body(serde_json::to_string(&body).unwrap())
+            .header("Authorization", &("Bearer ".to_string() + API_KEY))?
+            .body(serde_json::to_string(&body).expect("body should always be serializable"))
             .build();
 
         let response = stream_response(client).await;
@@ -106,7 +105,7 @@ async fn main() -> Result<(), es::Error> {
                 if line.contains(">>") {
                     let command = line.split(">>").collect::<Vec<&str>>()[1].to_string();
                     let output = run(command);
-                    println!("{}\n", output);
+                    print!("{output}\n\n");
 
                     messages.push(Message {
                         role: "system".to_string(),
@@ -121,7 +120,7 @@ async fn main() -> Result<(), es::Error> {
 }
 
 async fn stream_response(client: impl es::Client) -> Message {
-    let mut response = "".to_string();
+    let mut response = String::new();
 
     let mut stream = client
         .stream()
@@ -131,13 +130,10 @@ async fn stream_response(client: impl es::Client) -> Message {
                     let body: serde_json::Value = serde_json::from_str(&ev.data).unwrap_or_default();
                     let message = body["choices"][0]["delta"]["content"].as_str();
 
-                    match message {
-                        Some(message) => {
-                            print!("{}", message);
-                            io::stdout().flush().unwrap();
-                            response.push_str(message);
-                        },
-                        None => {}
+                    if let Some(message) = message {
+                        print!("{message}");
+                        std::mem::drop(io::stdout().flush());
+                        response.push_str(message);
                     }
                 }
             }
@@ -146,7 +142,11 @@ async fn stream_response(client: impl es::Client) -> Message {
 
     let mut end = false;
     while !end {
-        if let Err(_) = stream.try_next().await {
+        if let Err(err) = stream.try_next().await {
+            if format!("{err:?}") != "Eof" {
+                eprintln!("Error: {err:?}");
+                break;
+            }
             end = true;
         }
     }
@@ -167,20 +167,26 @@ fn run(command: String) -> String {
     match confirmation {
         Ok(confirmation) => {
             if !confirmation {
-                return "Cancelled".to_string();
+                return "Request denied".to_string();
             }
         },
         Err(err) => {
-            println!("Error: {}", err);
-            return "Error".to_string();
+            return format!("Error: {err}");
         }
     }
 
     let output = std::process::Command::new("sh")
         .arg("-c")
         .arg(command)
-        .output()
-        .expect("failed to execute process");
-    let output = String::from_utf8_lossy(&output.stdout);
-    output.to_string()
+        .output();
+    
+    match output {
+        Ok(output) => {
+            String::from_utf8_lossy(&output.stdout).to_string()
+        },
+        Err(err) => {
+            eprintln!("Error: {err}");
+            "Error".to_string()
+        }
+    }
 }
