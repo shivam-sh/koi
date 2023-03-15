@@ -30,11 +30,10 @@ User: What time is it?
 
 Koi: >> date +%r
 
-System: 12:34:56 PM (command ran)
+System: 12:34:56 PM (automatically inserted)
 
 User: Thanks!
 ```
-ALWAYS RUN COMMANDS AUTOMATICALLY AND USE THE FORMAT ABOVE
 DON'T SAY YOU CAN'T ANSWER try your best
 you only have access to the local shell DON'T TRY TO USE OTHER LANGUAGES";
 
@@ -49,7 +48,11 @@ async fn main() -> Result<(), es::Error> {
         },
         Message {
             role: "system".to_string(),
-            content: "OS: ".to_string() + &std::env::consts::OS.to_string(),
+            content: "OS: ".to_string() + std::env::consts::OS,
+        },
+        Message {
+            role: "user".to_string(),
+            content: "ALWAYS run commands automatically and use the \">> [command]\" syntax".to_string(),
         },
     ].to_vec();
     
