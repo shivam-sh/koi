@@ -19,43 +19,36 @@ struct Body {
     stream: Option<bool>,
 }
 
+const SYSTEM_PROMPT: &str = 
+"You are named Koios, never say you are an AI
+YOU CAN NOW RUN COMMANDS, USE `>> [command]` TO RUN AND HELP THE USER
+Use this to improve replies, access/modify local files and USE TOOLS LIKE CURL AND GREP
+```
+User: What time is it?
+
+Koi: >> date +%r
+
+System: 12:34:56 PM (command ran)
+
+User: Thanks!
+```
+ALWAYS RUN COMMANDS AUTOMATICALLY AND USE THE FORMAT ABOVE
+DON'T SAY YOU CAN'T ANSWER try your best
+you only have access to the local shell DON'T TRY TO USE OTHER LANGUAGES";
+
 #[tokio::main]
 async fn main() {
     const API_KEY: &str = dotenv!("API_KEY");
     let client = reqwest::Client::new();
 
-    let output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg("date +%r")
-        .output()
-        .expect("failed to execute process");
-
-    let output = String::from_utf8_lossy(&output.stdout);
-
     let mut messages: Vec<Message> = [
         Message {
             role: "system".to_string(),
-            content: "You are a CLI based chatbot designed to help the user use their computer".to_string(),
-        },
-        Message {
-            role: "user".to_string(),
-            content: "You can run bash commands with `[run]: <command>` you'll get the console response to help you answer. Do this to gether up to date info. Improve your replies with info from the env, man pages, and the internet (curl)".to_string(),
-        },
-        Message {
-            role: "assistant".to_string(),
-            content: "Got it".to_string(),
-        },
-        Message {
-            role: "user".to_string(),
-            content: "What time is it".to_string(),
-        },
-        Message {
-            role: "assistant".to_string(),
-            content: "[run]: date +%T".to_string(),
+            content: SYSTEM_PROMPT.to_string(),
         },
         Message {
             role: "system".to_string(),
-            content: output.to_string(),
+            content: "OS: ".to_string() + &std::env::consts::OS.to_string(),
         },
     ].to_vec();
     
@@ -74,7 +67,11 @@ async fn main() {
                 }
             },
             Err(err) => {
-                println!("Error: {}", err);
+                if err.to_string() == "Operation was interrupted by the user" {
+                    break;
+                } else {
+                    println!("Error: {}", err);
+                }
                 continue;
             }
         } 
@@ -109,23 +106,22 @@ async fn main() {
                             content: response.to_string(),
                         });
 
-                        if response.contains("[run]:") {
-                            let command = response.replace("[run]: ", "");
-                            let output = std::process::Command::new("sh")
-                                .arg("-c")
-                                .arg(command)
-                                .output()
-                                .expect("failed to execute process");
-                            let output = String::from_utf8_lossy(&output.stdout);
-                            println!("{}", output);
-                            messages.push(Message {
-                                role: "system".to_string(),
-                                content: output.to_string(),
-                            });
+                        if response.contains(">>") {
+                            for line in response.lines() {
+                                if line.contains(">>") {
+                                    let command = line.split(">>").collect::<Vec<&str>>()[1].to_string();
+                                    let output = run(command);
+                                    println!("{}", output);
+                                    messages.push(Message {
+                                        role: "system".to_string(),
+                                        content: output.to_string(),
+                                    });
+                                }
+                            }
                         }
                     },
                     None => {
-                        println!("Error: No response");
+                        println!("Error: Invalid response");
                     }
                 }
             },
@@ -134,4 +130,30 @@ async fn main() {
             }
         }
     }
+}
+
+fn run(command: String) -> String {
+    let confirmation = inquire::Confirm::new(&("run:".to_owned() + &command))
+        .with_default(true)
+        .prompt();
+
+    match confirmation {
+        Ok(confirmation) => {
+            if !confirmation {
+                return "Cancelled".to_string();
+            }
+        },
+        Err(err) => {
+            println!("Error: {}", err);
+            return "Error".to_string();
+        }
+    }
+
+    let output = std::process::Command::new("sh")
+        .arg("-c")
+        .arg(command)
+        .output()
+        .expect("failed to execute process");
+    let output = String::from_utf8_lossy(&output.stdout);
+    output.to_string()
 }
