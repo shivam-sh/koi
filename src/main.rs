@@ -1,11 +1,11 @@
-use dotenv_codegen::dotenv;
 use eventsource_client as es;
 use futures::TryStreamExt;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
 
-#[derive(Serialize, Deserialize)]
-#[derive(Clone)]
+pub mod args;
+
+#[derive(Clone, Serialize, Deserialize)]
 struct Message {
     role: String,
     content: String,
@@ -39,7 +39,7 @@ you only have access to the local shell DON'T TRY TO USE OTHER LANGUAGES";
 
 #[tokio::main]
 async fn main() -> Result<(), es::Error> {
-    const API_KEY: &str = dotenv!("API_KEY");
+    let api_key = args::parse();
 
     let mut messages: Vec<Message> = [
         Message {
@@ -54,7 +54,8 @@ async fn main() -> Result<(), es::Error> {
             role: "user".to_string(),
             content: "ALWAYS run commands automatically and use the \">> [command]\" syntax".to_string(),
         },
-    ].to_vec();
+    ]
+    .to_vec();
     
     loop {
         let input = inquire::Text::new(":").prompt();
@@ -69,7 +70,7 @@ async fn main() -> Result<(), es::Error> {
                 if input == "exit" {
                     break;
                 }
-            },
+            }
             Err(err) => {
                 if err.to_string() == "Operation was interrupted by the user" {
                     break;
@@ -91,14 +92,13 @@ async fn main() -> Result<(), es::Error> {
         let client = es::ClientBuilder::for_url("https://api.openai.com/v1/chat/completions")?
             .method("POST".to_string())
             .header("Content-Type", "application/json")?
-            .header("Authorization", &("Bearer ".to_string() + API_KEY))?
+            .header("Authorization", &("Bearer ".to_string() + &api_key))?
             .body(serde_json::to_string(&body).expect("body should always be serializable"))
             .build();
 
         let response = stream_response(client).await;
         let content = response.content.clone();
         messages.push(response);
-
 
         if content.contains(">>") {
             for line in content.lines() {
@@ -122,9 +122,7 @@ async fn main() -> Result<(), es::Error> {
 async fn stream_response(client: impl es::Client) -> Message {
     let mut response = String::new();
 
-    let mut stream = client
-        .stream()
-        .map_ok(|event| match event {
+    let mut stream = client.stream().map_ok(|event| match event {
             es::SSE::Event(ev) => {
                 if ev.event_type == "message" {
                     let body: serde_json::Value = serde_json::from_str(&ev.data).unwrap_or_default();
@@ -169,7 +167,7 @@ fn run(command: String) -> String {
             if !confirmation {
                 return "Request denied".to_string();
             }
-        },
+        }
         Err(err) => {
             return format!("Error: {err}");
         }
@@ -181,9 +179,7 @@ fn run(command: String) -> String {
         .output();
     
     match output {
-        Ok(output) => {
-            String::from_utf8_lossy(&output.stdout).to_string()
-        },
+        Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
         Err(err) => {
             eprintln!("Error: {err}");
             "Error".to_string()
