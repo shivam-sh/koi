@@ -3,7 +3,7 @@ use futures::TryStreamExt;
 use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
 
-pub mod args;
+pub mod config;
 
 #[derive(Clone, Serialize, Deserialize)]
 struct Message {
@@ -39,7 +39,7 @@ you only have access to the local shell DON'T TRY TO USE OTHER LANGUAGES";
 
 #[tokio::main]
 async fn main() -> Result<(), es::Error> {
-    let api_key = args::parse();
+    let api_key = config::parse();
 
     let mut messages: Vec<Message> = [
         Message {
