@@ -1,5 +1,6 @@
 pub mod config;
 pub mod chat;
+pub mod commands;
 
 const SYSTEM_PROMPT: &str = "You are named Koios, never say you are an AI
 YOU CAN NOW RUN COMMANDS, USE `>> [command]` TO RUN AND HELP THE USER
@@ -35,7 +36,7 @@ async fn main() -> Result<(), eventsource_client::Error> {
         },
     ]
     .to_vec();
-    
+
     loop {
         let input = inquire::Text::new(":").prompt();
 
@@ -57,7 +58,7 @@ async fn main() -> Result<(), eventsource_client::Error> {
                 eprintln!("Error: {err}");
                 continue;
             }
-        } 
+        }
 
         let body = chat::Body {
             model: "gpt-3.5-turbo".to_string(),
@@ -68,62 +69,28 @@ async fn main() -> Result<(), eventsource_client::Error> {
             stream: Some(true),
         };
 
-        let client = eventsource_client::ClientBuilder::for_url("https://api.openai.com/v1/chat/completions")?
-            .method("POST".to_string())
-            .header("Content-Type", "application/json")?
-            .header("Authorization", &("Bearer ".to_string() + &api_key))?
-            .body(serde_json::to_string(&body).expect("body should always be serializable"))
-            .build();
+        let client = eventsource_client::ClientBuilder::for_url(
+            "https://api.openai.com/v1/chat/completions",
+        )?
+        .method("POST".to_string())
+        .header("Content-Type", "application/json")?
+        .header("Authorization", &("Bearer ".to_string() + &api_key))?
+        .body(serde_json::to_string(&body).expect("body should always be serializable"))
+        .build();
 
         let response = chat::stream_response(client).await;
         let content = response.content.clone();
         messages.push(response);
 
-        if content.contains(">>") {
-            for line in content.lines() {
-                if line.contains(">>") {
-                    let command = line.split(">>").collect::<Vec<&str>>()[1].to_string();
-                    let output = run(command);
-                    print!("{output}\n\n");
+        let outputs = commands::parse(&content);
 
-                    messages.push(chat::Message {
-                        role: "system".to_string(),
-                        content: output.to_string(),
-                    });
-                }
-            }
+        for output in outputs {
+            messages.push(chat::Message {
+                role: "system".to_string(),
+                content: output.clone(),
+            });
         }
     }
 
     Ok(())
-}
-
-fn run(command: String) -> String {
-    let confirmation = inquire::Confirm::new(&("run:".to_owned() + &command))
-        .with_default(true)
-        .prompt();
-
-    match confirmation {
-        Ok(confirmation) => {
-            if !confirmation {
-                return "Request denied".to_string();
-            }
-        }
-        Err(err) => {
-            return format!("Error: {err}");
-        }
-    }
-
-    let output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .output();
-    
-    match output {
-        Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
-        Err(err) => {
-            eprintln!("Error: {err}");
-            "Error".to_string()
-        }
-    }
 }
