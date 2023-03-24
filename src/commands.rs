@@ -18,8 +18,8 @@ pub fn parse(input: &str) -> Vec<String> {
                 .collect::<Vec<&str>>()
                 .join("\n");
 
-            let output = run(block.to_string());
-            println!("{output}");
+            let output = run_checked(block.to_string());
+            println!("{output}\n");
             responses.push(output);
         }
     }
@@ -27,19 +27,51 @@ pub fn parse(input: &str) -> Vec<String> {
     responses
 }
 
-pub fn run(command: String) -> String {
-    let confirmation = inquire::Confirm::new(&("run:".to_owned() + &command))
-        .with_default(true)
-        .prompt();
+pub fn run_checked(command: String) -> String {
+    let choices = vec![
+        "Run Command",
+        "Edit Command",
+        "Cancel"
+        ];
 
-    match confirmation {
-        Ok(confirmation) => {
-            if !confirmation {
-                return "Request denied".to_string();
+    let choice = inquire::Select::new(
+        &("Command: ".to_owned() + &command + "\n"),
+        choices,
+    )
+    .without_help_message()
+    .prompt();
+
+    match choice {
+        Ok(choice) => {
+            match choice {
+                "Run Command" => {}
+                "Edit Command" => {
+                    let new_command = inquire::Text::new("Edit Command:")
+                    .with_initial_value(&command)
+                    .prompt();
+
+                    match new_command {
+                        Ok(new_command) => {
+                            return run_checked(new_command);
+                        }
+                        Err(err) => {
+                            eprintln!("Error: {}", err);
+                            return "command not run".to_string();
+                        }
+                    }
+                }
+                "Cancel" => {
+                    return "command not run".to_string();
+                }
+                _ => {
+                    eprintln!("Error: Invalid choice");
+                    return "command not run".to_string();
+                }
             }
         }
         Err(err) => {
-            return format!("Error: {err}");
+            eprintln!("Error: {}", err);
+            return "Command run cancelled".to_string();
         }
     }
 
