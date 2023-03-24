@@ -1,5 +1,5 @@
 use eventsource_client as es;
-use futures::TryStreamExt;
+use futures::{StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::io::{self, Write};
 
@@ -40,11 +40,10 @@ pub async fn stream_response(client: impl es::Client) -> Message {
 
     let mut end = false;
     while !end {
-        if let Err(err) = stream.try_next().await {
-            if format!("{err:?}") != "Eof" {
-                eprintln!("Error: {err:?}");
-                break;
-            }
+        if let Ok(Some(Ok(_))) =
+            tokio::time::timeout(std::time::Duration::from_secs(5), stream.next()).await
+        {
+        } else {
             end = true;
         }
     }
