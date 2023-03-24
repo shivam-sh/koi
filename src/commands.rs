@@ -1,3 +1,5 @@
+use console::{style, Style};
+
 #[must_use]
 pub fn parse(input: &str) -> Vec<String> {
     let mut responses: Vec<String> = Vec::new();
@@ -19,7 +21,14 @@ pub fn parse(input: &str) -> Vec<String> {
                 .join("\n");
 
             let output = run_checked(block.to_string());
-            println!("{output}\n");
+            let output = if output.ends_with('\n') {
+                output
+            } else {
+                output + "\n"
+            };
+
+            println!("{output}");
+
             responses.push(output);
         }
     }
@@ -28,50 +37,57 @@ pub fn parse(input: &str) -> Vec<String> {
 }
 
 pub fn run_checked(command: String) -> String {
-    let choices = vec![
-        "Run Command",
-        "Edit Command",
-        "Cancel"
-        ];
+    let error_style = Style::new().dim().red().bold();
+    let command_not_run = error_style.apply_to("Command Not Run").to_string();
+
+    let choices = vec!["Run Command", "Edit Command", "Cancel"];
 
     let choice = inquire::Select::new(
-        &("Command: ".to_owned() + &command + "\n"),
+        &format!("{} {}\n", style("Command:").cyan().bold(), command),
         choices,
     )
     .without_help_message()
     .prompt();
 
     match choice {
-        Ok(choice) => {
-            match choice {
-                "Run Command" => {}
-                "Edit Command" => {
-                    let new_command = inquire::Text::new("Edit Command:")
+        Ok(choice) => match choice {
+            "Run Command" => {}
+            "Edit Command" => {
+                let new_command = inquire::Text::new(&style("Edit:").cyan().bold().to_string())
                     .with_initial_value(&command)
                     .prompt();
 
-                    match new_command {
-                        Ok(new_command) => {
-                            return run_checked(new_command);
-                        }
-                        Err(err) => {
-                            eprintln!("Error: {}", err);
-                            return "command not run".to_string();
-                        }
+                match new_command {
+                    Ok(new_command) => {
+                        return run_checked(new_command);
+                    }
+                    Err(err) => {
+                        eprintln!(
+                            "{}",
+                            error_style
+                                .apply_to(format!("Inquire Error: {err}"))
+                                .to_string()
+                        );
+                        return command_not_run;
                     }
                 }
-                "Cancel" => {
-                    return "command not run".to_string();
-                }
-                _ => {
-                    eprintln!("Error: Invalid choice");
-                    return "command not run".to_string();
-                }
             }
-        }
+            "Cancel" => {
+                return error_style.apply_to("Command Run Cancelled\n").to_string();
+            }
+            _ => {
+                eprintln!("{}", error_style.apply_to("Invalid Choice").to_string());
+                return command_not_run;
+            }
+        },
         Err(err) => {
-            eprintln!("Error: {}", err);
-            return "Command run cancelled".to_string();
+            eprintln!(
+                "{}",
+                error_style
+                    .apply_to(format!("Inquire Error: {err}"))
+                    .to_string()
+            );
+            return command_not_run;
         }
     }
 
@@ -82,9 +98,8 @@ pub fn run_checked(command: String) -> String {
 
     match output {
         Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
-        Err(err) => {
-            eprintln!("Error: {err}");
-            "Error".to_string()
-        }
+        Err(err) => error_style
+            .apply_to(format!("Command Run Error: {err}"))
+            .to_string(),
     }
 }
