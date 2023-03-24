@@ -21,6 +21,11 @@ pub fn parse(input: &str) -> Vec<String> {
                 .join("\n");
 
             let output = run_checked(block.to_string());
+
+            if output == "Stop Command Run" {
+                break;
+            }
+
             let output = if output.ends_with('\n') {
                 output
             } else {
@@ -40,7 +45,12 @@ pub fn run_checked(command: String) -> String {
     let error_style = Style::new().dim().red().bold();
     let command_not_run = error_style.apply_to("Command Not Run").to_string();
 
-    let choices = vec!["Run Command", "Edit Command", "Cancel"];
+    let choices = vec![
+        "Run Command",
+        "Edit Command",
+        "Don't Run This Command",
+        "Don't Ask Again For This Response",
+    ];
 
     let choice = inquire::Select::new(
         &format!("{} {}\n", style("Command:").cyan().bold(), command),
@@ -62,31 +72,24 @@ pub fn run_checked(command: String) -> String {
                         return run_checked(new_command);
                     }
                     Err(err) => {
-                        eprintln!(
-                            "{}",
-                            error_style
-                                .apply_to(format!("Inquire Error: {err}"))
-                                .to_string()
-                        );
+                        eprintln!("{}", error_style.apply_to(format!("Inquire Error: {err}")));
                         return command_not_run;
                     }
                 }
             }
-            "Cancel" => {
+            "Don't Run This Command" => {
                 return error_style.apply_to("Command Run Cancelled\n").to_string();
             }
+            "Don't Run Next Commands" => {
+                return "Stop Command Run".to_string();
+            }
             _ => {
-                eprintln!("{}", error_style.apply_to("Invalid Choice").to_string());
+                eprintln!("{}", error_style.apply_to("Invalid Choice"));
                 return command_not_run;
             }
         },
         Err(err) => {
-            eprintln!(
-                "{}",
-                error_style
-                    .apply_to(format!("Inquire Error: {err}"))
-                    .to_string()
-            );
+            eprintln!("{}", error_style.apply_to(format!("Inquire Error: {err}")));
             return command_not_run;
         }
     }
