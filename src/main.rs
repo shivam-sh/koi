@@ -1,6 +1,7 @@
-pub mod config;
 pub mod chat;
 pub mod commands;
+pub mod config;
+pub mod interface;
 
 const SYSTEM_PROMPT: &str = "You are Koios, a chatbot running in a CLI.
 YOU CAN RUN COMMANDS, use code blocks to do so
@@ -19,26 +20,24 @@ wttr.in then takes your location and returns the weather";
 
 #[tokio::main]
 async fn main() -> Result<(), eventsource_client::Error> {
+    interface::init();
     let api_key = config::parse();
 
     let mut messages: Vec<chat::Message> = [
         chat::Message {
             role: "system".to_string(),
-            content: SYSTEM_PROMPT.to_string(),
-        },
-        chat::Message {
-            role: "system".to_string(),
-            content: "OS: ".to_string() + std::env::consts::OS,
+            content: format!("Current OS: {}\n", std::env::consts::OS) + SYSTEM_PROMPT,
         },
         chat::Message {
             role: "user".to_string(),
-            content: "find answers with shell code, put runnable code in markdown blocks ```".to_string(),
+            content: "find answers with the shell, always put runnable code in code blocks"
+                .to_string(),
         },
     ]
     .to_vec();
 
     loop {
-        let input = inquire::Text::new(":").prompt();
+        let input = inquire::Text::new("").prompt();
 
         match input {
             Ok(input) => {
@@ -55,7 +54,13 @@ async fn main() -> Result<(), eventsource_client::Error> {
                 if err.to_string() == "Operation was interrupted by the user" {
                     break;
                 }
-                eprintln!("Error: {err}");
+                eprintln!(
+                    "{}",
+                    console::style(format!("Error: {err}"))
+                        .red()
+                        .bold()
+                        .to_string()
+                );
                 continue;
             }
         }
