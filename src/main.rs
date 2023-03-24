@@ -1,68 +1,48 @@
-use eventsource_client as es;
-use futures::TryStreamExt;
-use serde::{Deserialize, Serialize};
-use std::io::{self, Write};
-
 pub mod config;
+pub mod chat;
+pub mod commands;
 
-#[derive(Clone, Serialize, Deserialize)]
-struct Message {
-    role: String,
-    content: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct Body {
-    model: String,
-    messages: Vec<Message>,
-    max_tokens: Option<u32>,
-    temperature: Option<f32>,
-    top_p: Option<f32>,
-    stream: Option<bool>,
-}
-
-const SYSTEM_PROMPT: &str = 
-"You are named Koios, never say you are an AI
-YOU CAN NOW RUN COMMANDS, USE `>> [command]` TO RUN AND HELP THE USER
+const SYSTEM_PROMPT: &str = "You are Koios, a chatbot running in a CLI.
+YOU CAN RUN COMMANDS, use code blocks to do so
 Use this to improve replies, access/modify local files and USE TOOLS LIKE CURL AND GREP
+NEVER SAY YOU CAN'T ANSWER try your best
+you only have access to the shell DON'T USE OTHER LANGUAGES
+
+User: What's the weather here?
+
+Koi: You can use curl to get the weather for your location with the following command
 ```
-User: What time is it?
-
-Koi: >> date +%r
-
-System: 12:34:56 PM (automatically inserted)
-
-User: Thanks!
+curl -s 'wttr.in/'$(curl -s ipinfo.io/city)'?format=%C:+%t'
 ```
-DON'T SAY YOU CAN'T ANSWER try your best
-you only have access to the local shell DON'T TRY TO USE OTHER LANGUAGES";
+ipinfo.io returns your location based on your IP address
+wttr.in then takes your location and returns the weather";
 
 #[tokio::main]
-async fn main() -> Result<(), es::Error> {
+async fn main() -> Result<(), eventsource_client::Error> {
     let api_key = config::parse();
 
-    let mut messages: Vec<Message> = [
-        Message {
+    let mut messages: Vec<chat::Message> = [
+        chat::Message {
             role: "system".to_string(),
             content: SYSTEM_PROMPT.to_string(),
         },
-        Message {
+        chat::Message {
             role: "system".to_string(),
             content: "OS: ".to_string() + std::env::consts::OS,
         },
-        Message {
+        chat::Message {
             role: "user".to_string(),
-            content: "ALWAYS run commands automatically and use the \">> [command]\" syntax".to_string(),
+            content: "find answers with shell code, put runnable code in markdown blocks ```".to_string(),
         },
     ]
     .to_vec();
-    
+
     loop {
         let input = inquire::Text::new(":").prompt();
 
         match input {
             Ok(input) => {
-                messages.push(Message {
+                messages.push(chat::Message {
                     role: "user".to_string(),
                     content: input.clone(),
                 });
@@ -78,9 +58,9 @@ async fn main() -> Result<(), es::Error> {
                 eprintln!("Error: {err}");
                 continue;
             }
-        } 
+        }
 
-        let body = Body {
+        let body = chat::Body {
             model: "gpt-3.5-turbo".to_string(),
             messages: messages.clone(),
             max_tokens: None,
@@ -89,100 +69,28 @@ async fn main() -> Result<(), es::Error> {
             stream: Some(true),
         };
 
-        let client = es::ClientBuilder::for_url("https://api.openai.com/v1/chat/completions")?
-            .method("POST".to_string())
-            .header("Content-Type", "application/json")?
-            .header("Authorization", &("Bearer ".to_string() + &api_key))?
-            .body(serde_json::to_string(&body).expect("body should always be serializable"))
-            .build();
+        let client = eventsource_client::ClientBuilder::for_url(
+            "https://api.openai.com/v1/chat/completions",
+        )?
+        .method("POST".to_string())
+        .header("Content-Type", "application/json")?
+        .header("Authorization", &("Bearer ".to_string() + &api_key))?
+        .body(serde_json::to_string(&body).expect("body should always be serializable"))
+        .build();
 
-        let response = stream_response(client).await;
+        let response = chat::stream_response(client).await;
         let content = response.content.clone();
         messages.push(response);
 
-        if content.contains(">>") {
-            for line in content.lines() {
-                if line.contains(">>") {
-                    let command = line.split(">>").collect::<Vec<&str>>()[1].to_string();
-                    let output = run(command);
-                    print!("{output}\n\n");
+        let outputs = commands::parse(&content);
 
-                    messages.push(Message {
-                        role: "system".to_string(),
-                        content: output.to_string(),
-                    });
-                }
-            }
+        for output in outputs {
+            messages.push(chat::Message {
+                role: "system".to_string(),
+                content: output.clone(),
+            });
         }
     }
 
     Ok(())
-}
-
-async fn stream_response(client: impl es::Client) -> Message {
-    let mut response = String::new();
-
-    let mut stream = client.stream().map_ok(|event| match event {
-            es::SSE::Event(ev) => {
-                if ev.event_type == "message" {
-                    let body: serde_json::Value = serde_json::from_str(&ev.data).unwrap_or_default();
-                    let message = body["choices"][0]["delta"]["content"].as_str();
-
-                    if let Some(message) = message {
-                        print!("{message}");
-                        std::mem::drop(io::stdout().flush());
-                        response.push_str(message);
-                    }
-                }
-            }
-            es::SSE::Comment(_) => {}
-        });
-
-    let mut end = false;
-    while !end {
-        if let Err(err) = stream.try_next().await {
-            if format!("{err:?}") != "Eof" {
-                eprintln!("Error: {err:?}");
-                break;
-            }
-            end = true;
-        }
-    }
-
-    print!("\n\n");
-
-    Message {
-        role: "assistant".to_string(),
-        content: response,
-    }
-}
-
-fn run(command: String) -> String {
-    let confirmation = inquire::Confirm::new(&("run:".to_owned() + &command))
-        .with_default(true)
-        .prompt();
-
-    match confirmation {
-        Ok(confirmation) => {
-            if !confirmation {
-                return "Request denied".to_string();
-            }
-        }
-        Err(err) => {
-            return format!("Error: {err}");
-        }
-    }
-
-    let output = std::process::Command::new("sh")
-        .arg("-c")
-        .arg(command)
-        .output();
-    
-    match output {
-        Ok(output) => String::from_utf8_lossy(&output.stdout).to_string(),
-        Err(err) => {
-            eprintln!("Error: {err}");
-            "Error".to_string()
-        }
-    }
 }
