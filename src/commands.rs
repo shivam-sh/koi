@@ -49,7 +49,7 @@ pub fn run_checked(command: String) -> String {
         "Run Command",
         "Edit Command",
         "Don't Run This Command",
-        "Don't Ask Again For This Response",
+        "Don't Ask For This Response",
     ];
 
     let choice = inquire::Select::new(
@@ -80,7 +80,7 @@ pub fn run_checked(command: String) -> String {
             "Don't Run This Command" => {
                 return error_style.apply_to("Command Run Cancelled\n").to_string();
             }
-            "Don't Run Next Commands" => {
+            "Don't Ask For This Response" => {
                 return "Stop Command Run".to_string();
             }
             _ => {
