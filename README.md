@@ -5,10 +5,6 @@
 Koi is a simple tool built to let you use ChatGPT through the command line.
 It adds the ability to let ChatGPT run commands on your computer in order to help you out, or to help you out with complicated tasks.
 
-## Demo
-
-
-
 ## How do I use Koi?
 
 Koi is a simple tool to use. You can use it by running the following command:
@@ -21,6 +17,13 @@ This will open up a prompt for you to start asking questions.
 You can edit the configuration file to pre-fill the API key so you don't have to enter it every time, allowing you to just run `koi` to start using it.
 
 ## Installation
+
+### Cargo
+To install Koi using Cargo, you can run the following command in your terminal:
+```bash
+cargo install koios
+```
+You will need to have [Rust](https://www.rust-lang.org/tools/install) installed in order to install Koi from source.
 
 ### From Source
 To install Koi from source, you can run the following commands in your terminal:
@@ -36,6 +39,12 @@ You will need to have [Rust](https://www.rust-lang.org/tools/install) installed 
 - Download binaries for popular platforms from the [releases page](https://github.com/shivam-sh/koi/releases)
 - Unzip the file with `tar -xvf <file>.tar.gz`
 - Move the binary to a directory in your `PATH` environment variable
+
+On macOS, you may get an error saying that the binary is from an unidentified developer. To fix this, you can run the following command:
+```bash
+sudo xattr -r -d com.apple.quarantine <path to binary>
+```
+You can also just right click on the binary and click "Open" to open it for the first time.
 
 ## Contributing
 

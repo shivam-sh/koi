@@ -1,5 +1,5 @@
 [package]
-name = "koi-cli"
+name = "koios"
 description = "A CLI tool to interact with the ChatGPT API and allow it to run commands on your machine to help you out."
 version = "0.1.0"
 edition = "2021"
