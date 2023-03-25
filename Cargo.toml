@@ -1,7 +1,12 @@
 [package]
-name = "koi"
+name = "koios"
+description = "A CLI tool to interact with the ChatGPT API and allow it to run commands on your machine to help you out."
 version = "0.1.0"
 edition = "2021"
+readme = "README.md"
+repository = "https://github.com/shivam-sh/koi/"
+license = "MIT"
+categories = ["command-line-utilities"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
