@@ -5,6 +5,12 @@
 Koi is a simple tool built to let you use ChatGPT through the command line.
 It adds the ability to let ChatGPT run commands on your computer in order to help you out, or to help you out with complicated tasks.
 
+## Demo
+
+
+https://user-images.githubusercontent.com/24887625/227695739-de3d96ff-94cc-42bf-80a9-a0d292d2fae9.mp4
+
+
 ## How do I use Koi?
 
 Koi is a simple tool to use. You can use it by running the following command:
