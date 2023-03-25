@@ -8,7 +8,9 @@ repository = "https://github.com/shivam-sh/koi/"
 license = "MIT"
 categories = ["command-line-utilities"]
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[[bin]]
+name = "koi"
+path = "src/main.rs"
 
 [dependencies]
 clap = { version = "4.1.11", features = ["derive"] }
